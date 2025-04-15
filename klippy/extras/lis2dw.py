@@ -8,23 +8,29 @@ import logging
 from . import bus, adxl345, bulk_sensor
 
 # LIS2DW registers
-REG_LIS2DW_WHO_AM_I_ADDR = 0x0F
-REG_LIS2DW_CTRL_REG1_ADDR = 0x20
-REG_LIS2DW_CTRL_REG2_ADDR = 0x21
-REG_LIS2DW_CTRL_REG3_ADDR = 0x22
-REG_LIS2DW_CTRL_REG4_ADDR = 0x23
-REG_LIS2DW_CTRL_REG5_ADDR = 0x24
-REG_LIS2DW_CTRL_REG6_ADDR = 0x25
+REG_LIS2DW_WHO_AM_I_ADDR   = 0x0F
+REG_LIS2DW_CTRL_REG1_ADDR  = 0x20
+REG_LIS2DW_CTRL_REG2_ADDR  = 0x21
+REG_LIS2DW_CTRL_REG3_ADDR  = 0x22
+REG_LIS2DW_CTRL_REG4_ADDR  = 0x23
+REG_LIS2DW_CTRL_REG5_ADDR  = 0x24
+REG_LIS2DW_CTRL_REG6_ADDR  = 0x25
 REG_LIS2DW_STATUS_REG_ADDR = 0x27
-REG_LIS2DW_OUT_XL_ADDR = 0x28
-REG_LIS2DW_OUT_XH_ADDR = 0x29
-REG_LIS2DW_OUT_YL_ADDR = 0x2A
-REG_LIS2DW_OUT_YH_ADDR = 0x2B
-REG_LIS2DW_OUT_ZL_ADDR = 0x2C
-REG_LIS2DW_OUT_ZH_ADDR = 0x2D
-REG_LIS2DW_FIFO_CTRL   = 0x2E
-REG_LIS2DW_FIFO_SAMPLES = 0x2F
-REG_MOD_READ = 0x80
+REG_LIS2DW_OUT_XL_ADDR     = 0x28
+REG_LIS2DW_OUT_XH_ADDR     = 0x29
+REG_LIS2DW_OUT_YL_ADDR     = 0x2A
+REG_LIS2DW_OUT_YH_ADDR     = 0x2B
+REG_LIS2DW_OUT_ZL_ADDR     = 0x2C
+REG_LIS2DW_OUT_ZH_ADDR     = 0x2D
+REG_LIS2DW_FIFO_CTRL       = 0x2E
+REG_LIS2DW_FIFO_SAMPLES    = 0x2F
+REG_MOD_READ               = 0x80
+
+# New registers for Tap Detection (see datasheet section 3.2.5)
+REG_TAP_THS_X = 0x30
+REG_TAP_THS_Y = 0x31
+REG_TAP_THS_Z = 0x32
+REG_INT_DUR   = 0x33
 
 LIS2DW_DEV_ID = 0x44
 LIS3DH_DEV_ID = 0x33
@@ -146,14 +152,26 @@ class LIS2DW:
                     "(e.g. faulty wiring) or a faulty lis2dw chip."
                     % (dev_id, LIS2DW_DEV_ID))
             # Setup chip in requested query rate
-            # ODR/2, +-16g, low-pass filter, Low-noise abled
+            # ODR/2, +-16g, low-pass filter, Low-noise enabled
             self.set_reg(REG_LIS2DW_CTRL_REG6_ADDR, 0x34)
-            # Continuous mode: If the FIFO is full
-            # the new sample overwrites the older sample.
+            # Continuous mode: If the FIFO is full the new sample overwrites the older sample.
             self.set_reg(REG_LIS2DW_FIFO_CTRL, 0xC0)
             # High-Performance / Low-Power mode 1600/200 Hz
             # High-Performance Mode (14-bit resolution)
             self.set_reg(REG_LIS2DW_CTRL_REG1_ADDR, 0x94)
+            #
+            # ----- New Tap Detection Setup -----
+            # Here we add tap detection support by configuring the tap threshold and duration registers.
+            # The default values below (0x10 for thresholds, 0x20 for duration) are examples.
+            self.set_reg(REG_TAP_THS_X, 0x10)  # TAP threshold for X-axis
+            self.set_reg(REG_TAP_THS_Y, 0x10)  # TAP threshold for Y-axis
+            self.set_reg(REG_TAP_THS_Z, 0x10)  # TAP threshold for Z-axis
+            self.set_reg(REG_INT_DUR,   0x20)  # Tap duration (for single/double tap recognition)
+            # Enable tap interrupt on INT1 by setting the TAP interrupt bit in CTRL_REG4.
+            # (Assuming that bit 3 (0x08) in CTRL_REG4 enables tap detection interrupt)
+            curr = self.read_reg(REG_LIS2DW_CTRL_REG4_ADDR)
+            self.set_reg(REG_LIS2DW_CTRL_REG4_ADDR, curr | 0x08)
+            # ----- End New Tap Detection Setup -----
         else:
             if dev_id != LIS3DH_DEV_ID:
                 raise self.printer.command_error(
